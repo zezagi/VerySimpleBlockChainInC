@@ -32,3 +32,9 @@ void createBlock(int id, unsigned long previousHash, struct Blockchain* blockcha
 unsigned long CalculateHash(char* data);
 bool TryGetWalletInfo(struct walletInfo* walletInfo, struct Blockchain blockchain);
 bool TryFinalizeBlock(struct Blockchain *blockchain);
+int BlocksInBlockchain(struct Blockchain* blockchain);
+bool TryLoadBlockchain(struct Blockchain* blockchainToLoad);
+bool TrySaveBlockchain(struct Blockchain* blockchainToSave);
+void FinalizeTail(struct Blockchain* blockchain);
+void DebugTransaction(struct Blockchain* blockchain, char receiver[50]);
+void RawDataToHash(struct Block* block, char* data, int maxSizeInBytes);

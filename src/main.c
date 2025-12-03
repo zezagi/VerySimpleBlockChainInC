@@ -10,7 +10,8 @@ int main(void) {
     struct Blockchain blockchain;
     blockchain.head = NULL;
     blockchain.tail = NULL;
-    createBlock(0, 0, &blockchain);
+    if (!TryLoadBlockchain(&blockchain))
+        createBlock(0, 0, &blockchain);
 
     enum MenuStage menuStage=MainMenu;
     int mainMenuSelection;
@@ -30,10 +31,11 @@ int main(void) {
                     case 1:
                         printf("\nEnter wallet ID: ");
                         printf("> ");
-                        if (scanf(" %50s", &walletInfo.address)) {
+                        if (scanf(" %50s", walletInfo.address)) {
                             walletInfo.money = 0;
                             if (!TryGetWalletInfo(&walletInfo, blockchain)) {
-                                printf("\nSorry, this wallet doesn't exist!");
+                                printf("\nThis is new wallet!");
+                                menuStage = AccountDashboard;
                             }
                             else {
                                 menuStage = AccountDashboard;
@@ -41,6 +43,7 @@ int main(void) {
                         }
                         break;
                     case 2:
+                        return 0;
                         break;
                     default: return 0;
                 }
@@ -50,10 +53,13 @@ int main(void) {
                 printf("\n=========== [ YOUR ACCOUNT ] ===========");
                 printf("\nYour wallet ID: [ %50s ]", walletInfo.address);
                 printf("\nMoney: %d$", walletInfo.money);
+                printf("\nBlocks count: %d", BlocksInBlockchain(&blockchain));
                 printf("\n=========== [ OPTIONS ] ===========");
                 printf("\n1) - Send money");
                 printf("\n2) - Refresh");
-                printf("\n3) - Log out");
+                printf("\n3) - Log out and save");
+                printf("\n4) - Finalize block");
+                printf("\n5) - [DEBUG] Add 500$");
                 printf("\n> ");
                 scanf_s(" %d", &mainMenuSelection);
                 switch (mainMenuSelection) {
@@ -62,17 +68,21 @@ int main(void) {
                         printf("\nEnter reciever's wallet ID: ");
                         printf("\n> ");
                         scanf("%50s", receiverID);
-                        printf("\nEnter transaction money: %d", walletInfo.money);
+                        printf("\nEnter transaction money: ");
+                        printf("\n> ");
                         scanf_s("%d", &transactionMoney);
                         if (transactionMoney>walletInfo.money) {
                             printf("\n[ERROR] Not enough money!");
                             break;
                         }
                         struct Transaction transaction = CreateTransaction(transactionMoney, receiverID, walletInfo.address);
+                        walletInfo.money-=transactionMoney;
                         addTransactionToChain(&transaction, &blockchain);
-                        printf("Transaction created successfully! Your money: %d", walletInfo.money-transactionMoney);
+                        printf("Transaction created successfully! Your money: %d", walletInfo.money);
                         break;
                     case 2:
+                        walletInfo.money=0;
+                        TryGetWalletInfo(&walletInfo, blockchain);
                         menuStage = AccountDashboard;
                         continue;
                         break;
@@ -80,7 +90,14 @@ int main(void) {
                         menuStage = MainMenu;
                         strcpy(walletInfo.address, "00000000000000000000000000000000000000000000000000");
                         walletInfo.money = 0;
+                        TrySaveBlockchain(&blockchain);
                         continue;
+                        break;
+                    case 4:
+                        FinalizeTail(&blockchain);
+                        break;
+                    case 5:
+                        DebugTransaction(&blockchain, walletInfo.address);
                         break;
                 }
                 break;
