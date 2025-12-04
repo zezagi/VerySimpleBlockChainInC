@@ -27,6 +27,8 @@ add_executable(JakisTestC
         src/main.c
         src/blockchain_helpers.c
         src/blockchain_helpers.h
+        src/sha256.c
+        src/sha256.h
 )
 
 # ==========================================

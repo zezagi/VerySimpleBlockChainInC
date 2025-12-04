@@ -4,7 +4,49 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include "sha256.h"
+#include <limits.h>
 
+#define DIFFICULTY_ZEROS 3
+
+bool IsHashValid(char* hash) {
+    for (int i = 0; i < DIFFICULTY_ZEROS; i++) {
+        if (hash[i] != '0') return false;
+    }
+    return true;
+}
+
+void MineBlock(struct Blockchain* blockchain) {
+    struct Block* block = blockchain->tail;
+    char staticData[2000];
+    RawDataToHash(block, staticData, sizeof(staticData));
+
+    int nonce = 0;
+    char currentHash[65];
+    char dataToHash[2100];
+
+    printf("\n[MINING] Started mining block. ID: %d\n",block->id);
+    while (nonce < INT_MAX) {
+
+        sprintf(dataToHash, "%s%d", staticData, nonce);
+        CalculateHash(dataToHash, currentHash);
+
+        if (nonce%100000 == 0) {
+            printf("\r[MINING] Mining in progress... current nonce: %d , hash: %65s",nonce, currentHash);
+            fflush(stdout);
+        }
+
+        if (IsHashValid(currentHash)) {
+            printf("\n[MINING] Block mined! Nonce: %d Hash: %s\n", nonce, currentHash);
+
+            block->nonce = nonce;
+            strcpy(block->Hash, currentHash);
+            break;
+        }
+
+        nonce++;
+    }
+}
 void DebugTransaction(struct Blockchain* blockchain, char receiver[50]) {
     struct Transaction transaction = CreateTransaction(500, receiver, "CONSOLE");
     addTransactionToChain(&transaction, blockchain);
@@ -18,7 +60,6 @@ void FinalizeTail(struct Blockchain *blockchain) {
     }
     TryFinalizeBlock(blockchain);
 }
-
 bool TrySaveBlockchain(struct Blockchain* blockchainToSave) {
     FILE *file = fopen("blockchain.txt", "wb");
     struct Block* temp = blockchainToSave->head;
@@ -31,53 +72,72 @@ bool TrySaveBlockchain(struct Blockchain* blockchainToSave) {
     fclose(file);
     return true;
 }
-
 bool TryLoadBlockchain(struct Blockchain* blockchainToLoad) {
     FILE *file = fopen("blockchain.txt", "rb");
     if (file == NULL) return false;
+
+    blockchainToLoad->head = NULL;
+    blockchainToLoad->tail = NULL;
+
     while (true) {
         struct Block tempToCheck;
-        if (!fread(&tempToCheck, sizeof(struct Block), 1, file)) {
+        size_t readCount = fread(&tempToCheck, sizeof(struct Block), 1, file);
+
+        if (readCount == 0) {
             fclose(file);
             if (feof(file)) return true;
             return false;
         }
 
-        if (tempToCheck.transactionCount < 0 || tempToCheck.transactionCount > 10) {
-            printf("[SECURITY] Block ID: %d is not secure.", tempToCheck.id);
-            fclose(file);
-            return false;
-        }
-
+        tempToCheck.previousHash[64] = '\0';
+        tempToCheck.Hash[64] = '\0';
         for (int i = 0; i < tempToCheck.transactionCount; i++) {
             tempToCheck.transactions[i].receiver[49] = '\0';
             tempToCheck.transactions[i].sender[49] = '\0';
         }
-        //SECURITY - PODSTAWA CALEGO SENSU ISTNIENIA
-        char data[2000] = "";
-        RawDataToHash(&tempToCheck, data, sizeof(data));
-        unsigned long validHash = CalculateHash(data);
 
-        if (tempToCheck.Hash != validHash) {
-            printf("[SECURITY] Block ID: %d is not secure.", tempToCheck.id);
-            fclose(file);
-            return false;
+        bool isWorkingBlock = (strcmp(tempToCheck.Hash, "") == 0);
+
+
+        if (!isWorkingBlock) {
+            if (tempToCheck.transactionCount < 0 || tempToCheck.transactionCount > 10) {
+                printf("[SECURITY] Block ID: %d corrupted transaction count.\n", tempToCheck.id);
+                fclose(file); return false;
+            }
+
+            char data[2000] = "";
+            RawDataToHash(&tempToCheck, data, sizeof(data));
+            char dataWithNonce[2100] = "";
+            sprintf(dataWithNonce, "%s%d", data, tempToCheck.nonce);
+
+            char validHash[65];
+            CalculateHash(dataWithNonce, validHash);
+
+            // Sprawdzamy Proof of Work (tylko dla wykopanych)
+            if (tempToCheck.id != 0 && !IsHashValid(validHash)) {
+                printf("[SECURITY] Block ID: %d not mined correctly! Hash in file: %s\n", tempToCheck.id, tempToCheck.Hash);
+                fclose(file); return false;
+            }
+
+            if (strcmp(tempToCheck.Hash, validHash) != 0) {
+                printf("[SECURITY] Block ID: %d Hash mismatch!\n", tempToCheck.id);
+                fclose(file); return false;
+            }
         }
-        if (tempToCheck.id != 0) {
-            if (blockchainToLoad->tail!=NULL) {
-                if (tempToCheck.previousHash != blockchainToLoad->tail->Hash) {
-                    printf("[SECURITY] Block ID: %d is not secure.", tempToCheck.id);
-                    fclose(file);
-                    return false;
-                }
 
+        // Sprawdzanie łańcucha (Previous Hash)
+        if (tempToCheck.id != 0 && blockchainToLoad->tail != NULL) {
+            if (strcmp(tempToCheck.previousHash, blockchainToLoad->tail->Hash) != 0) {
+                printf("[SECURITY] Block ID: %d Broken Chain!\n", tempToCheck.id);
+                fclose(file); return false;
             }
         }
 
         struct Block* temp = malloc(sizeof(struct Block));
-        if (temp==NULL) { fclose(file); return false; }
+        if (temp == NULL) { fclose(file); return false; }
         *temp = tempToCheck;
         temp->next = NULL;
+
         if (blockchainToLoad->head == NULL) {
             blockchainToLoad->head = blockchainToLoad->tail = temp;
         }
@@ -85,16 +145,17 @@ bool TryLoadBlockchain(struct Blockchain* blockchainToLoad) {
             blockchainToLoad->tail->next = temp;
             blockchainToLoad->tail = temp;
         }
-
     }
 }
 void RawDataToHash(struct Block* block, char* data, int maxSizeInBytes) {
     data[0] = '\0';
     int id = block->id;
     int creationTime = block->creationTime;
-    unsigned long previousHash = block->previousHash;
-    if (sprintf_s(data,maxSizeInBytes, "%d%d%lu", id, creationTime, previousHash)<0)
+    char headerPart[1000];
+    if (sprintf_s(headerPart, sizeof(headerPart), "%d%d%s", id, creationTime, block->previousHash) < 0)
         return;
+
+    strcat_s(data, maxSizeInBytes, headerPart);
 
     for (int i=0; i<block->transactionCount; i++) {
         char temp[200] = "";
@@ -105,25 +166,22 @@ void RawDataToHash(struct Block* block, char* data, int maxSizeInBytes) {
     }
 }
 bool TryFinalizeBlock(struct Blockchain *blockchain) {
-    char buffer[2000] = "";
-    RawDataToHash(blockchain->tail, buffer, sizeof(buffer));
-    unsigned long newHash = CalculateHash(buffer);
-    blockchain->tail->Hash = newHash;
-    createBlock(blockchain->tail->id+1, newHash, blockchain);
+    MineBlock(blockchain);
+    createBlock(blockchain->tail->id+1, blockchain->tail->Hash, blockchain);
     return true;
 }
 bool TryGetWalletInfo(struct walletInfo* walletInfo, struct Blockchain blockchain) {
     struct Block* currentChecking=blockchain.head;
     bool foundAccount=false;
     while (currentChecking!=NULL) {
-        if (currentChecking->Hash==0){ currentChecking = currentChecking->next; continue; }
+        if (strcmp(currentChecking->Hash, "")==0){ currentChecking = currentChecking->next; continue; }
         for (int i=0; i<currentChecking->transactionCount; i++) {
             //kazda transakcje sprawdzam
             if (strcmp(walletInfo->address, currentChecking->transactions[i].sender)==0) {
                 walletInfo->money -= currentChecking->transactions[i].amount;
                 foundAccount = true;
             }
-            else if (strcmp(walletInfo->address, currentChecking->transactions[i].receiver)==0) {
+            if (strcmp(walletInfo->address, currentChecking->transactions[i].receiver)==0) {
                 walletInfo->money += currentChecking->transactions[i].amount;
                 foundAccount = true;
             }
@@ -132,12 +190,9 @@ bool TryGetWalletInfo(struct walletInfo* walletInfo, struct Blockchain blockchai
     }
     return foundAccount;
 }
-unsigned long CalculateHash(char* data) {
-    unsigned long wynik = 0;
-    for (int i=0; data[i]!='\0'; i++) {
-        wynik+=data[i] + wynik*13;
-    }
-    return wynik;
+void CalculateHash(char* data, char* outputBuffer) {
+    sha256_easy_hash_hex(data, strlen(data), outputBuffer);
+    outputBuffer[64] = '\0';
 }
 struct Transaction CreateTransaction(int amount, char receiver[50], char sender[50]) {
     struct Transaction transaction;
@@ -167,26 +222,33 @@ int BlocksInBlockchain(struct Blockchain* blockchain) {
     return count;
 }
 
-void createBlock(int id, unsigned long previousHash, struct Blockchain* blockchain) {
+void createBlock(int id, char* previousHash, struct Blockchain* blockchain) {
     struct Block* block = malloc(sizeof(struct Block));
+    if (block == NULL) return;
+
     block->id = id;
     block->transactionCount = 0;
     block->creationTime = (int)time(NULL);
     if (blockchain->head==NULL || blockchain->tail==NULL) {
         //to pierwszy blok
         blockchain->head = blockchain->tail = block;
-        char data[2000] ="";
+        strcpy(block->previousHash, "0000000000000000000000000000000000000000000000000000000000000000");
+
+        char data[2000] = "";
+        block->nonce = 0; // Genesis zazwyczaj ma nonce 0
         RawDataToHash(block, data, 2000);
-        long unsigned hash = CalculateHash(data);
-        block->Hash = hash;
-        block->previousHash=0;
+
+        char dataWithNonce[2100];
+        sprintf(dataWithNonce, "%s%d", data, 0);
+
+        CalculateHash(dataWithNonce, block->Hash);
         block->next = NULL;
     }
     else {
-        block->previousHash = blockchain->tail->Hash;
+        strcpy(block->previousHash, previousHash);
         blockchain->tail->next = block;
         blockchain->tail = block;
-        block->Hash = 0;
+        strcpy(block->Hash, "");
         block->next = NULL;
     }
 }

@@ -11,7 +11,7 @@ int main(void) {
     blockchain.head = NULL;
     blockchain.tail = NULL;
     if (!TryLoadBlockchain(&blockchain))
-        createBlock(0, 0, &blockchain);
+        createBlock(0, "", &blockchain);
 
     enum MenuStage menuStage=MainMenu;
     int mainMenuSelection;
