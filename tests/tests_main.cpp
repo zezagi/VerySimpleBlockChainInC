@@ -2,7 +2,7 @@
 
 // Trik łączenia C z C++
 extern "C" {
-#include "../src/blockchain_helpers.h" // Ścieżka do Twojego nagłówka
+#include "../src/headers/blockchain_helpers.h"
 }
 
 TEST(BlockchainLogika, TworzenieTransakcji) {

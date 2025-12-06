@@ -1,7 +1,11 @@
 #include <stdio.h>
-#include "blockchain_helpers.h"
+#include "headers/blockchain_helpers.h"
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
+#include "headers/blockchain_core.h"
+#include "headers/wallet_service.h"
+#include "headers/storage_manager.h"
 
 enum MenuStage {MainMenu, AccountDashboard};
 struct walletInfo walletInfo;
@@ -16,15 +20,18 @@ int main(void) {
     enum MenuStage menuStage=MainMenu;
     int mainMenuSelection;
 
+
+
     char receiverID[50];
     int transactionMoney;
     while (true) {
         switch (menuStage) {
             case MainMenu:
                 printf("\n=========== [ MAIN MENU ] ===========\n");
-                printf("1) - Open wallet\n");
-                printf("2) - EXIT\n");
-                printf("> ");
+                printf("\nCURRENT BLOCK: %d Transactions.", blockchain.tail->transactionCount);
+                printf("\n1) - Open wallet");
+                printf("\n2) - EXIT");
+                printf("\n> ");
                 scanf(" %d", &mainMenuSelection);
 
                 switch (mainMenuSelection) {
@@ -53,7 +60,7 @@ int main(void) {
                 printf("\n=========== [ YOUR ACCOUNT ] ===========");
                 printf("\nYour wallet ID: [ %50s ]", walletInfo.address);
                 printf("\nMoney: %d$", walletInfo.money);
-                printf("\nBlocks count: %d", BlocksInBlockchain(&blockchain));
+                printf("\nBlocks count: %d", GetChainLength(&blockchain));
                 printf("\n=========== [ OPTIONS ] ===========");
                 printf("\n1) - Send money");
                 printf("\n2) - Refresh");
@@ -77,6 +84,11 @@ int main(void) {
                         }
                         struct Transaction transaction = CreateTransaction(transactionMoney, receiverID, walletInfo.address);
                         walletInfo.money-=transactionMoney;
+                        TryGetWalletInfo(&walletInfo, blockchain);
+                        if (walletInfo.money<transactionMoney) {
+                            printf("\n[ERROR] Not enough money!");
+                            break;
+                        }
                         addTransactionToChain(&transaction, &blockchain);
                         printf("Transaction created successfully! Your money: %d", walletInfo.money);
                         break;
@@ -94,7 +106,7 @@ int main(void) {
                         continue;
                         break;
                     case 4:
-                        FinalizeTail(&blockchain);
+                        FinalizeTail(&blockchain, walletInfo.address);
                         break;
                     case 5:
                         DebugTransaction(&blockchain, walletInfo.address);

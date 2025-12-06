@@ -26,9 +26,17 @@ FetchContent_MakeAvailable(googletest)
 add_executable(JakisTestC
         src/main.c
         src/blockchain_helpers.c
-        src/blockchain_helpers.h
+        src/headers/blockchain_helpers.h
         src/sha256.c
-        src/sha256.h
+        src/headers/sha256.h
+        src/headers/blockchain_core.h
+        src/blockchain_core.c
+        src/headers/wallet_service.h
+        src/wallet_service.c
+        src/headers/storage_manager.h
+        src/storage_manager.c
+        src/headers/mining_utils.h
+        src/mining_utils.c
 )
 
 # ==========================================
@@ -39,7 +47,8 @@ add_executable(JakisTestC
 add_executable(BlockchainTests
         tests/tests_main.cpp      # Plik z testami (C++)
         src/blockchain_helpers.c            # Twoja logika (C)
-        src/blockchain_helpers.h            # Nagłówki (C)
+        src/headers/blockchain_helpers.h
+        src/headers/blockchain_core.h            # Nagłówki (C)
 )
 
 # Linkujemy bibliotekę Google Test do Twoich testów

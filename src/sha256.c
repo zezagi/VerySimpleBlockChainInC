@@ -25,7 +25,7 @@
 /* Details of the implementation, etc can be found here: https://en.wikipedia.org/wiki/SHA-2
    See sha256.h for short documentation on library usage */
 
-#include "sha256.h"
+#include "headers/sha256.h"
 
 void sha256_init(struct sha256_buff* buff) {
     buff->h[0] = 0x6a09e667;
